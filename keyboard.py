@@ -1,121 +1,169 @@
-import pandas as pd
-from tkinter import *
+from tkinter import Tk
 import time
+import csv
+import os
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
 
-# Function to handle key release events
-def key_up(key_event):
-    global entered_password, user_data, start_time
-    
-    # Get the current time stamp
-    time_stamp = time.time()
-    
-    # Add key up time to the last entered key in the password
-    entered_password[-1].append(time_stamp)
-    
-    # Calculate the time difference between key down and key up events
-    time_diff = time_stamp - entered_password[-1][1]
-    entered_password[-1].append(time_diff)
-    
-    # If there is more than one key entered, calculate the flight time
-    if len(entered_password) > 1:
-        flight_time = time_stamp - entered_password[-2][1]
-        entered_password[-2].append(flight_time)
-        print("Flight Time:", flight_time)
-    
-    # Print the key up event details
-    print("Key Up:", key_event.char)
-    print("Time Difference:", time_diff)
-    
-    # Authenticate the entered password and save user data
-    authenticate()
-    save_user_data()
 
-# Function to handle key press events
-def key_down(key_event):
-    global entered_password, start_time
-    
-    # Get the current time stamp
-    time_stamp = time.time()
-    
-    # If it's the first key entered, set the start time
-    if not entered_password:
-        start_time = time_stamp
-    
-    # Add the key and key down time to the entered password
-    entered_password.append([key_event.char, time_stamp])
-    print("Key Down:", key_event.char)
+class UserProfile:
+    def __init__(self):
+        self.options = {
+            "1": self.create_profile,
+            "2": self.add_data,
+            "3": self.test_password,
+            "4": self.quit_program
+        }
+        self.profiles = {}
+        self.current_profile = None
+        self.user_data = []
+        self.password_attempts = 0
 
-# Function to authenticate the entered password
-def authenticate():
-    global entered_password, model, user_data
-    
-    password = "techiscool123"
-    
-    # If the entered password length is greater than or equal to the password length
-    if len(entered_password) >= len(password):
-        # Get the entered characters
-        entered_chars = [entry[0] for entry in entered_password]
-        
-        # Check if the entered password matches the correct password
-        if "".join(entered_chars[-len(password):]) == password:
-            print("Authentication successful!")
-            
-            # Extract features from the entered password and authenticate the user using the trained model
-            user_input = [entry[2] for entry in entered_password[:-1]]
-            authenticate_user(user_input)
+    def display_menu(self):
+        print("========== Keystroke Dynamics Based User Authentication System ==========")
+        print("1. Create a profile")
+        print("2. Add data to a profile")
+        print("3. Test a profile")
+        print("4. Quit")
+
+    def get_user_input(self):
+        return input("Enter your choice: ")
+
+    def create_profile(self):
+        profile_name = input("Enter profile name: ")
+        self.profiles[profile_name] = {}
+        print(f"Profile '{profile_name}' created.")
+
+    def add_data(self):
+        if not self.profiles:
+            print("No profiles found. Please create a profile first.")
+            return
+
+        print("Existing Profiles:")
+        for profile in self.profiles:
+            print(f"- {profile}")
+
+        profile_name = input("Enter the profile name to add data: ")
+        if profile_name in self.profiles:
+            self.current_profile = profile_name
+            print(f"Enter the password 'techiscool123' for profile: {self.current_profile}")
+            password_entered = False
+            while not password_entered:
+                try:
+                    self.collect_data()
+                    password_entered = True
+                except ValueError:
+                    print("Incorrect password. Please try again.")
+            self.save_data()
+            print("Data added successfully.")
         else:
-            print("Authentication failed!")
-        
-        # Clear the entered password
-        entered_password = []
+            print("Profile not found. Please enter a valid profile name.")
 
-# Function to authenticate the user using a trained model
-def authenticate_user(user_input):
-    label = model.predict([user_input])[0]
-    if label == "correct_user":
-        print("User authentication successful!")
+    def collect_data(self):
+        password = input("Enter the password: ")
+        if password == "techiscool123":
+            start_time = None
+
+            def key_up(key_event):
+                nonlocal start_time
+                end_time = time.time()
+                flight_time = end_time - start_time
+                time_difference = abs(start_time - end_time) if start_time is not None else 0
+                self.user_data.append([time_difference, flight_time, self.current_profile])
+                start_time = end_time
+
+            def key_down(key_event):
+                nonlocal start_time
+                start_time = time.time()
+                print(f"Key pressed: {key_event.char}")
+
+            root = Tk()
+            root.title("Keystroke Dynamics Based User Authentication System")
+            root.geometry("500x200")
+
+            root.bind("<KeyPress>", key_down)
+            root.bind("<KeyRelease>", key_up)
+            root.mainloop()
+        else:
+            raise ValueError
+
+    def save_data(self):
+        filename = "keystroke_data.csv"
+        header = ["Time Difference", "Flight Time", "Profiles"]
+
+        if not os.path.isfile(filename):
+            with open(filename, "a", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow(header)
+
+        with open(filename, "a", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerows(self.user_data)
+        self.user_data = []
+
+    def test_password(self):
+        if self.profiles:
+            print("Existing Profiles:")
+            for profile in self.profiles:
+                print(f"- {profile}")
+
+            profile_name = input("Enter the profile name to test: ")
+            if profile_name in self.profiles:
+                self.current_profile = profile_name
+                password_attempts = 0
+                while password_attempts < 3:
+                    password = input("Enter the password 'techiscool123': ")
+                    if password == "techiscool123":
+                        self.collect_data()
+                        self.save_data()
+                        self.analyze_typing_pattern()
+                        break
+                    else:
+                        password_attempts += 1
+                        if password_attempts >= 3:
+                            print("Access denied. Too many incorrect attempts.")
+                            self.quit_program()
+                            return
+                        print("Incorrect password. Please try again.")
+            else:
+                print("Profile not found. Please enter a valid profile name.")
+        else:
+            print("No profiles found. Please create a profile first.")
+
+    def analyze_typing_pattern(self):
+        filename = "keystroke_data.csv"
+        if os.path.isfile(filename):
+            data = pd.read_csv(filename)
+            profile_data = data[data["Profiles"] == self.current_profile]
+            X = profile_data.iloc[:, :-1]
+            y = profile_data.iloc[:, -1]
+
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+            model = RandomForestClassifier(n_estimators=100)
+            model.fit(X_train, y_train)
+
+            y_pred = model.predict(X_test)
+
+            accuracy = accuracy_score(y_test, y_pred)
+            print(f"Accuracy: {accuracy * 100}%")
+        else:
+            print("No data available. Please add data to profiles first.")
+
+    def quit_program(self):
+        print("Exiting the program...")
+        quit()
+
+
+user_profile = UserProfile()
+
+while True:
+    user_profile.display_menu()
+    choice = user_profile.get_user_input()
+
+    if choice in user_profile.options:
+        user_profile.options[choice]()
     else:
-        print("User authentication failed!")
-
-# Function to save the user data
-def save_user_data():
-    global user_data, entered_password, start_time
-    
-    # If there is more than one key entered, calculate the key down time, key up time, time difference, and flight time
-    if len(entered_password) > 1:
-        key_down_time = entered_password[-2][1] - start_time
-        key_up_time = entered_password[-2][2] - start_time
-        time_diff = entered_password[-2][3]
-        flight_time = entered_password[-2][4]
-        
-        # Create a new DataFrame with the calculated values
-        new_data = pd.DataFrame({"key_down_time": [key_down_time], "key_up_time": [key_up_time], "time_difference": [time_diff], "flight_time": [flight_time]})
-        
-        # Concatenate the new data with the existing user_data
-        user_data = pd.concat([user_data, new_data], ignore_index=True)
-        print(user_data)
-        
-        # Save the updated user data to a CSV file
-        user_data.to_csv("user_data.csv", index=False)  # Change the file name as per your requirement
-
-# Create an empty DataFrame to store user data
-user_data = pd.DataFrame(columns=["key_down_time", "key_up_time", "time_difference", "flight_time"])
-
-# Create the Tkinter root window and frame
-root = Tk()
-frame = Frame(root, width=100, height=100)
-
-# Bind key press and key release events to the frame
-frame.bind("<KeyPress>", key_down)
-frame.bind("<KeyRelease>", key_up)
-
-# Pack and focus on the frame
-frame.pack()
-frame.focus_set()
-
-# Initialize variables
-entered_password = []
-start_time = 0.0
-
-# Start the Tkinter event loop
-root.mainloop()
+        print("Invalid choice. Please try again.")
